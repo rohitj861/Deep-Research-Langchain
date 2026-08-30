@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from agent import build_research_agent, ensure_report, run_config  # noqa: E402
 from config import DEFAULT_DEPTH, DEFAULT_PROVIDER, REPORT_FILE  # noqa: E402
 from exporter import export_to_pdf  # noqa: E402
-from utils import read_file  # noqa: E402
+from utils import find_file  # noqa: E402
 
 
 def main() -> int:
@@ -32,7 +32,7 @@ def main() -> int:
                     print(f"  [{node}] {call['name']}")
 
     state = ensure_report(agent, config, agent.get_state(config).values)
-    report = read_file(state.get("files", {}), REPORT_FILE)
+    report = find_file(state.get("files", {}), REPORT_FILE)[1]
     if not report:
         print("\nThe agent did not produce a report.")
         print(state["messages"][-1].text)

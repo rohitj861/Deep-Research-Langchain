@@ -29,7 +29,7 @@ from config import (
 from errors import explain
 from ui import describe_tool_call, render_history_plan, render_todos
 from exporter import export_to_pdf
-from utils import list_files, read_file
+from utils import find_file, list_files, read_file
 
 st.set_page_config(page_title="Deep Research AI", page_icon="🧠", layout="wide")
 
@@ -89,7 +89,7 @@ def _stream_run(agent, question: str, depth: str, activity, plan_box) -> dict:
                 activity.markdown("\n\n".join(lines[-14:]))
 
     state = agent.get_state(config).values
-    if not read_file(state.get("files", {}), REPORT_FILE):
+    if not find_file(state.get("files", {}), REPORT_FILE)[1]:
         # The prompt makes the report mandatory, but a model can still shortcut a
         # question it judges trivial. One bounded follow-up turn closes that gap.
         lines.append("📄 Report missing — asking the agent to write it")
@@ -208,7 +208,7 @@ if question:
             )
 
 files = st.session_state.files
-report = read_file(files, REPORT_FILE)
+report_path, report = find_file(files, REPORT_FILE)
 
 if files:
     st.divider()
@@ -237,7 +237,7 @@ if files:
 
     with notes_tab:
         st.caption("The agent's virtual filesystem — notes live here instead of in the context window.")
-        note_paths = list_files(files, exclude=(REPORT_FILE,))
+        note_paths = list_files(files, exclude=(report_path or REPORT_FILE,))
         for path in note_paths:
             icon = "📌" if path.lstrip("/") == QUESTION_FILE else "📝"
             with st.expander(f"{icon} {path}"):

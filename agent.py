@@ -34,7 +34,7 @@ from config import (
 )
 from prompts import critique_subagent_prompt, orchestrator_prompt, research_subagent_prompt
 from tools import build_search_tools, get_weather
-from utils import read_file
+from utils import find_file
 
 NUDGE = (
     f"You ended that turn without writing `{REPORT_FILE}`. Write it now with `write_file`, "
@@ -137,7 +137,7 @@ def ensure_report(agent: CompiledStateGraph, config: dict, state: dict) -> dict:
     covers that case; the agent keeps its notes, so this is a write, not a re-research.
     Returns the state after the nudge, or the original state if a report was there.
     """
-    if read_file(state.get("files", {}), REPORT_FILE):
+    if find_file(state.get("files", {}), REPORT_FILE)[1]:
         return state
 
     agent.invoke({"messages": [{"role": "user", "content": NUDGE}]}, config)
