@@ -150,8 +150,9 @@ the same code runs locally off `.env` and on Cloud off the secrets panel — no 
    still pointing at someone else's remote will not work.
 2. At [share.streamlit.io](https://share.streamlit.io) choose **New app**, pick the repo
    and branch, and set **Main file path** to `app.py`.
-3. Under **Advanced settings**, set the Python version to **3.11, 3.12, or 3.13**.
-   `deepagents` requires 3.11+, so the older defaults will fail to install.
+3. Check the Python version under **Advanced settings**. `deepagents` needs **3.11 or
+   newer**; Cloud's current default (3.14) is fine, so this usually needs no change.
+   Only override it if your deployment lands on something older.
 4. Paste your keys into **Secrets** (Advanced settings now, or Manage app → Settings →
    Secrets later). Use `.streamlit/secrets.toml.example` as the template:
 
@@ -222,6 +223,11 @@ without a Tavily key, and the markdown-to-PDF renderer. Nothing in it hits a net
   `ensure_report` in `agent.py` is the backstop: if a turn somehow ends without
   `final_report.md`, it spends one more turn on the same thread writing it from the notes
   already gathered. A narrow question gets a shorter report, never no report.
+- **The report is found wherever the agent put it.** Models improvise paths, so
+  `utils.find_file` matches the exact path first, then the same filename in any
+  directory, then the same name ignoring case, punctuation and extension. Without this
+  a report written to `/reports/Final-Report.md` reads as missing — and `ensure_report`
+  wastes a turn rewriting a report that already exists.
 - **Threads are checkpointed in memory**, so follow-up questions in the same Streamlit
   session keep the notes and report from the previous turn. "New session" clears them.
 - **Provider errors are translated** (`errors.py`) into a headline plus a next step, so a
