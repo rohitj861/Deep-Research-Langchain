@@ -113,8 +113,21 @@ class ToolCallDescriptionTests(unittest.TestCase):
         self.assertIn("what is RAG", line)
 
     def test_long_arguments_are_truncated(self):
-        line = ui.describe_tool_call({"name": "mystery_tool", "args": {"blob": "x" * 500}})
-        self.assertLess(len(line), 200)
+        line = ui.describe_tool_call({"name": "mystery_tool", "args": {"blob": "x" * 5000}})
+        self.assertLess(len(line), ui.ARGUMENT_CHARS + 60)
+
+    def test_a_realistic_delegation_is_shown_in_full(self):
+        # The line that prompted raising the limit: it used to be cut at "the p".
+        description = (
+            "Research one narrow question for a report: For the main categories of forces "
+            "a beginner would hear about, what are the practical definitions and the "
+            "everyday examples that make each one concrete?"
+        )
+        line = ui.describe_tool_call(
+            {"name": "task", "args": {"subagent_type": "research-agent", "description": description}}
+        )
+        self.assertIn("everyday examples", line)
+        self.assertNotIn("…", line)
 
     def test_long_delegation_description_is_abbreviated_not_chopped(self):
         line = ui.describe_tool_call({

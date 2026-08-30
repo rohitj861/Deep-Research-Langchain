@@ -21,6 +21,13 @@ TOOL_LABELS = {
 
 STATUS_ICONS = {"pending": "⬜", "in_progress": "🔄", "completed": "✅"}
 
+# How much of each activity-log line to show before abbreviating. The delegation
+# description is the most useful thing in the log — it is the whole instruction a
+# subagent was handed — so it gets the most room.
+DELEGATION_CHARS = 400
+QUERY_CHARS = 250
+ARGUMENT_CHARS = 250
+
 
 def shorten(text: str, limit: int) -> str:
     """Trim to `limit` characters on a word boundary, marking that it was cut.
@@ -42,16 +49,16 @@ def describe_tool_call(call: dict) -> str:
     label = TOOL_LABELS.get(name, f"🔧 {name}")
 
     if name == "task":
-        return f"{label} `{args.get('subagent_type', '?')}` — {shorten(args.get('description', ''), 120)}"
+        return f"{label} `{args.get('subagent_type', '?')}` — {shorten(args.get('description', ''), DELEGATION_CHARS)}"
     if name in {"write_file", "edit_file", "read_file"}:
         return f"{label} `{args.get('file_path', '?')}`"
     if name == "tavily_search":
-        return f"{label}: _{shorten(args.get('query', ''), 120)}_"
+        return f"{label}: _{shorten(args.get('query', ''), QUERY_CHARS)}_"
     if name == "write_todos":
         return label
     if args:
         first = next(iter(args.values()))
-        return f"{label} `{shorten(first, 100)}`"
+        return f"{label} `{shorten(first, ARGUMENT_CHARS)}`"
     return label
 
 
