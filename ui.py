@@ -22,6 +22,19 @@ TOOL_LABELS = {
 STATUS_ICONS = {"pending": "⬜", "in_progress": "🔄", "completed": "✅"}
 
 
+def shorten(text: str, limit: int) -> str:
+    """Trim to `limit` characters on a word boundary, marking that it was cut.
+
+    A hard slice ends lines mid-word ("...what are the p"), which reads like the
+    agent produced a truncated instruction rather than the log abbreviating it.
+    """
+    collapsed = " ".join(str(text).split())
+    if len(collapsed) <= limit:
+        return collapsed
+    head = collapsed[:limit].rsplit(" ", 1)[0].rstrip(" ,;:.-")
+    return f"{head or collapsed[:limit]}…"
+
+
 def describe_tool_call(call: dict) -> str:
     """One activity-log line for a tool call."""
     name = call.get("name", "tool")
@@ -29,16 +42,16 @@ def describe_tool_call(call: dict) -> str:
     label = TOOL_LABELS.get(name, f"🔧 {name}")
 
     if name == "task":
-        return f"{label} `{args.get('subagent_type', '?')}` — {str(args.get('description', ''))[:120]}"
+        return f"{label} `{args.get('subagent_type', '?')}` — {shorten(args.get('description', ''), 120)}"
     if name in {"write_file", "edit_file", "read_file"}:
         return f"{label} `{args.get('file_path', '?')}`"
     if name == "tavily_search":
-        return f"{label}: _{args.get('query', '')}_"
+        return f"{label}: _{shorten(args.get('query', ''), 120)}_"
     if name == "write_todos":
         return label
     if args:
         first = next(iter(args.values()))
-        return f"{label} `{str(first)[:100]}`"
+        return f"{label} `{shorten(first, 100)}`"
     return label
 
 

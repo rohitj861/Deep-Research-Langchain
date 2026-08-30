@@ -62,6 +62,40 @@ class TodoMarkdownTests(unittest.TestCase):
         self.assertEqual(ui.todo_markdown([]), "")
 
 
+class ShortenTests(unittest.TestCase):
+    """Long text is abbreviated, not chopped mid-word.
+
+    A hard slice produced lines like "...what are the p", which reads as though the
+    agent emitted a truncated instruction rather than the log shortening it.
+    """
+
+    LONG = ("Research one narrow question for a report: For the main categories of forces "
+            "a beginner would hear about, what are the practical definitions?")
+
+    def test_short_text_is_returned_unchanged(self):
+        self.assertEqual(ui.shorten("Review the report.", 120), "Review the report.")
+
+    def test_long_text_is_marked_as_cut(self):
+        self.assertTrue(ui.shorten(self.LONG, 120).endswith("…"))
+
+    def test_cut_lands_on_a_word_boundary(self):
+        body = ui.shorten(self.LONG, 120).rstrip("…")
+        # The last word kept must be a whole word from the original.
+        self.assertIn(body.split()[-1], self.LONG.split())
+
+    def test_result_stays_within_the_limit(self):
+        self.assertLessEqual(len(ui.shorten(self.LONG, 120)), 121)  # +1 for the ellipsis
+
+    def test_newlines_and_runs_of_spaces_collapse(self):
+        self.assertEqual(ui.shorten("what is\n\n   gravity", 120), "what is gravity")
+
+    def test_trailing_punctuation_is_trimmed_before_the_ellipsis(self):
+        self.assertNotIn(",…", ui.shorten("alpha beta, gamma delta epsilon", 12))
+
+    def test_single_unbroken_word_still_truncates(self):
+        self.assertEqual(ui.shorten("x" * 200, 10), "x" * 10 + "…")
+
+
 class ToolCallDescriptionTests(unittest.TestCase):
     def test_delegation_names_the_subagent(self):
         line = ui.describe_tool_call(
@@ -81,6 +115,18 @@ class ToolCallDescriptionTests(unittest.TestCase):
     def test_long_arguments_are_truncated(self):
         line = ui.describe_tool_call({"name": "mystery_tool", "args": {"blob": "x" * 500}})
         self.assertLess(len(line), 200)
+
+    def test_long_delegation_description_is_abbreviated_not_chopped(self):
+        line = ui.describe_tool_call({
+            "name": "task",
+            "args": {"subagent_type": "research-agent", "description": "word " * 100},
+        })
+        self.assertTrue(line.endswith("…"))
+        self.assertNotIn("wor…", line)  # never a partial word
+
+    def test_long_search_query_is_abbreviated(self):
+        line = ui.describe_tool_call({"name": "tavily_search", "args": {"query": "gravity " * 50}})
+        self.assertIn("…", line)
 
     def test_unknown_tool_still_renders_a_label(self):
         self.assertIn("mystery_tool", ui.describe_tool_call({"name": "mystery_tool", "args": {}}))
