@@ -11,16 +11,22 @@ env/
 # Environment files
 .env
 .env.*
+!.env.example
 
 # Streamlit / local runtime
 .streamlit/secrets.toml
 *.log
+
+# Tooling caches
+.ruff_cache/
+.pytest_cache/
 
 # Build / export artifacts
 build/
 dist/
 *.egg-info/
 research_report.pdf
+research_report.md
 
 # OS files
 .DS_Store

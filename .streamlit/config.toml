@@ -1,0 +1,12 @@
+# Committed. Applies locally and on Streamlit Community Cloud.
+# Secrets do NOT go here — see secrets.toml.example.
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"
+primaryColor = "#2f4f7f"

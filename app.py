@@ -1,68 +1,246 @@
+"""Streamlit front end for the Deep Research deep agent."""
+
 import os
+import pathlib
+import tempfile
+import uuid
+
 import streamlit as st
-from planner import build_plan
-from executor import execute_task
-from report_generator import generate_report
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langgraph.checkpoint.memory import InMemorySaver
+
+from agent import build_research_agent, ensure_report, run_config
+from auth import require_password
+from config import (
+    DEFAULT_DEPTH,
+    DEFAULT_PROVIDER,
+    DEPTH_PRESETS,
+    NOTES_DIR,
+    PROVIDER_LABELS,
+    Provider,
+    QUESTION_FILE,
+    REPORT_FILE,
+    get_depth_preset,
+    get_model_name,
+    get_provider_spec,
+    has_api_key,
+    search_enabled,
+)
+from errors import explain
+from ui import describe_tool_call, render_history_plan, render_todos
 from exporter import export_to_pdf
-from config import Provider, PROVIDER_LABELS, get_provider_settings
+from utils import list_files, read_file
 
 st.set_page_config(page_title="Deep Research AI", page_icon="🧠", layout="wide")
 
-st.title("Deep Research AI")
-st.caption("Planner → Executor → Report generator built in pure Python")
+def _init_state() -> None:
+    st.session_state.setdefault("thread_id", uuid.uuid4().hex)
+    st.session_state.setdefault("history", [])
+    st.session_state.setdefault("files", {})
+    st.session_state.setdefault("todos", [])
+    # One checkpointer for the whole session. Rebuilding the agent (a provider or
+    # depth change) must not silently wipe the thread it is still pointing at.
+    st.session_state.setdefault("checkpointer", InMemorySaver())
+
+
+def _reset_session() -> None:
+    st.session_state.thread_id = uuid.uuid4().hex
+    st.session_state.history = []
+    st.session_state.files = {}
+    st.session_state.todos = []
+    st.session_state.pop("agent", None)
+    st.session_state.pop("agent_signature", None)
+    st.session_state.checkpointer = InMemorySaver()
+
+
+def _get_agent(provider: Provider, depth: str):
+    """Cache the compiled agent per (provider, depth) so the thread's memory survives reruns."""
+    signature = (provider.value, depth, get_model_name(provider))
+    if st.session_state.get("agent_signature") != signature:
+        st.session_state.agent = build_research_agent(
+            provider, depth, checkpointer=st.session_state.checkpointer
+        )
+        st.session_state.agent_signature = signature
+    return st.session_state.agent
+
+
+def _stream_run(agent, question: str, depth: str, activity, plan_box) -> dict:
+    """Stream one agent turn, rendering activity as it happens. Returns the final state."""
+    config = run_config(depth, st.session_state.thread_id)
+    lines: list[str] = []
+
+    for chunk in agent.stream({"messages": [HumanMessage(content=question)]}, config, stream_mode="updates"):
+        for update in chunk.values():
+            if not isinstance(update, dict):
+                continue
+
+            if update.get("todos"):
+                st.session_state.todos = update["todos"]
+                render_todos(st.session_state.todos, plan_box)
+
+            for message in update.get("messages", []) or []:
+                if isinstance(message, AIMessage):
+                    for call in message.tool_calls or []:
+                        lines.append(describe_tool_call(call))
+                elif isinstance(message, ToolMessage) and message.name == "task":
+                    lines.append("↩️ Subagent finished and reported back")
+
+            if lines:
+                activity.markdown("\n\n".join(lines[-14:]))
+
+    state = agent.get_state(config).values
+    if not read_file(state.get("files", {}), REPORT_FILE):
+        # The prompt makes the report mandatory, but a model can still shortcut a
+        # question it judges trivial. One bounded follow-up turn closes that gap.
+        lines.append("📄 Report missing — asking the agent to write it")
+        activity.markdown("\n\n".join(lines[-14:]))
+        state = ensure_report(agent, config, state)
+    return state
+
+
+@st.cache_data(show_spinner=False)
+def _report_pdf(report: str) -> bytes:
+    """Render the report to PDF once and cache it, keyed on the report text."""
+    path = os.path.join(tempfile.gettempdir(), "research_report.pdf")
+    export_to_pdf(report, path)
+    return pathlib.Path(path).read_bytes()
+
+
+def _final_text(state: dict) -> str:
+    for message in reversed(state.get("messages", [])):
+        if isinstance(message, AIMessage) and message.content and not message.tool_calls:
+            # `.text` flattens structured content blocks (Gemini returns those).
+            return getattr(message, "text", None) or str(message.content)
+    return ""
+
+
+# Gate before any UI renders, so a locked app leaks nothing but the form.
+if not require_password():
+    st.stop()
+
+_init_state()
 
 with st.sidebar:
-    st.header("Provider")
-    provider = st.radio("", list(Provider), format_func=lambda p: PROVIDER_LABELS.get(p, p.value), horizontal=False)
-    depth = st.selectbox("Research Depth", ["Basic", "Standard", "Advanced"])
+    st.header("Model")
+    provider = st.radio(
+        "Provider",
+        list(Provider),
+        index=list(Provider).index(DEFAULT_PROVIDER),
+        format_func=lambda p: PROVIDER_LABELS.get(p, p.value),
+    )
+    spec = get_provider_spec(provider)
+    st.caption(f"Model spec: `{spec.lc_provider}:{get_model_name(provider)}`")
 
-st.subheader("Research Topic")
-topic = st.text_input("Research topic", placeholder="Ask anything you want to research...")
+    if has_api_key(provider):
+        st.success(f"{spec.key_envs[0]} found", icon="✅")
+    else:
+        st.error(f"Set `{spec.key_envs[0]}` in `.env`", icon="🔑")
+        st.caption(f"[Get a key]({spec.console_url})")
 
-if st.button("Generate Research", type="primary"):
-    if not topic.strip():
-        st.error("Please enter a research topic")
+    st.header("Depth")
+    depth = st.selectbox(
+        "Research depth",
+        list(DEPTH_PRESETS),
+        index=list(DEPTH_PRESETS).index(DEFAULT_DEPTH if DEFAULT_DEPTH in DEPTH_PRESETS else "Standard"),
+    )
+    st.caption(get_depth_preset(depth).description)
+
+    st.header("Web search")
+    if search_enabled():
+        st.success("Tavily search enabled", icon="🌐")
+    else:
+        st.warning("No `TAVILY_API_KEY` — the agent will answer from model knowledge only.", icon="⚠️")
+
+    st.divider()
+    if st.button("New session", use_container_width=True):
+        _reset_session()
+        st.rerun()
+
+st.title("Deep Research AI")
+st.caption("A LangChain **deep agent**: planning todos, a virtual filesystem, and research subagents.")
+
+for entry in st.session_state.history:
+    with st.chat_message(entry["role"]):
+        if entry.get("content"):
+            st.markdown(entry["content"])
+        render_history_plan(entry.get("todos", []))
+
+question = st.chat_input("Ask a research question, or follow up on the last report...")
+
+if question:
+    if not has_api_key(provider):
+        st.error(f"No API key for {spec.label}. Add `{spec.key_envs[0]}` to your `.env` and restart.")
         st.stop()
 
-    settings = get_provider_settings(provider.value)
-    if not settings.get("api_key"):
-        st.error("No API key is configured for this provider. Add it to the backend .env file first.")
-        st.stop()
+    st.session_state.history.append({"role": "user", "content": question})
+    with st.chat_message("user"):
+        st.markdown(question)
 
-    with st.spinner("Planning research tasks..."):
-        tasks = build_plan(topic, provider.value)
+    agent = _get_agent(provider, depth)
 
-    if not tasks:
-        st.error("No tasks were generated. The provider may be unavailable or the API key may not have access.")
-        st.stop()
+    with st.chat_message("assistant"):
+        # st.empty() (not st.container()) — the agent calls write_todos several
+        # times per run, and each render must REPLACE the plan, not stack another
+        # copy underneath it.
+        plan_box = st.empty()
+        with st.status("Researching...", expanded=True) as status:
+            activity = st.empty()
+            try:
+                state = _stream_run(agent, question, depth, activity, plan_box)
+            except Exception as exc:  # surfaced in the UI rather than as a stack trace
+                status.update(label="Run failed", state="error")
+                headline, next_step = explain(exc)
+                st.error(headline)
+                st.info(next_step)
+                st.stop()
+            status.update(label="Research complete", state="complete")
 
-    if isinstance(tasks, list) and tasks and isinstance(tasks[0], dict) and "Provider error" in str(tasks[0].get("objective", "")):
-        st.warning("The provider returned an error. Please check your backend credentials or billing status.")
-        st.stop()
+        st.session_state.files = state.get("files", {}) or {}
+        st.session_state.todos = state.get("todos", []) or []
 
-    st.subheader("Research Plan")
-    for index, task in enumerate(tasks, start=1):
-        st.checkbox(task.get("title", f"Task {index}"), value=True, disabled=True)
+        summary = _final_text(state)
+        if summary:
+            st.markdown(summary)
+        # Keep the turn even without a summary, so its plan is still recoverable.
+        if summary or st.session_state.todos:
+            st.session_state.history.append(
+                {"role": "assistant", "content": summary, "todos": st.session_state.todos}
+            )
 
-    results = []
-    progress_bar = st.progress(0)
-    status_text = st.empty()
+files = st.session_state.files
+report = read_file(files, REPORT_FILE)
 
-    for index, task in enumerate(tasks, start=1):
-        status_text.text(f"Executing task {index}/{len(tasks)}: {task.get('title', '')}")
-        result = execute_task(task, provider.value)
-        results.append(result)
-        progress_bar.progress(index / len(tasks))
+if files:
+    st.divider()
+    report_tab, notes_tab = st.tabs(["📄 Report", "🗂️ Workspace"])
 
-    st.success("Research completed")
+    with report_tab:
+        if report:
+            st.markdown(report)
+            left, right = st.columns(2)
+            left.download_button(
+                "Download Markdown",
+                data=report.encode("utf-8"),
+                file_name="research_report.md",
+                mime="text/markdown",
+                use_container_width=True,
+            )
+            right.download_button(
+                "Download PDF",
+                data=_report_pdf(report),
+                file_name="research_report.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+        else:
+            st.info(f"The agent has not written `{REPORT_FILE}` yet.")
 
-    with st.spinner("Generating final report..."):
-        report = generate_report(topic, results, provider.value)
-
-    st.subheader("Final Report")
-    st.markdown(report)
-
-    output_path = os.path.join(os.getcwd(), "research_report.pdf")
-    export_to_pdf(report, output_path)
-    with open(output_path, "rb") as file_obj:
-        st.download_button("Download PDF", data=file_obj.read(), file_name="research_report.pdf", mime="application/pdf")
+    with notes_tab:
+        st.caption("The agent's virtual filesystem — notes live here instead of in the context window.")
+        note_paths = list_files(files, exclude=(REPORT_FILE,))
+        for path in note_paths:
+            icon = "📌" if path.lstrip("/") == QUESTION_FILE else "📝"
+            with st.expander(f"{icon} {path}"):
+                st.markdown(read_file(files, path))
+        if not note_paths:
+            st.info(f"No notes under `{NOTES_DIR}/` yet.")
