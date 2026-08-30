@@ -61,12 +61,10 @@ Deep-Research-Langchain/
 ├── exporter.py           # markdown -> PDF (headings, lists, tables)
 ├── errors.py             # provider errors -> one actionable line
 ├── tools/
-│   ├── search.py         # Tavily web search for the research subagent
-│   └── weather.py        # get_weather — worked example of a custom tool
+│   └── search.py         # Tavily web search for the research subagent
 ├── utils/
 │   └── files.py          # read the agent's virtual filesystem
 ├── examples/
-│   ├── quickstart.py     # the smallest possible deep agent
 │   └── research_cli.py   # full research run from the terminal
 └── tests/
 ```
@@ -93,25 +91,6 @@ You need a key for **one** model provider, not both — whichever you select in 
 sidebar. `TAVILY_API_KEY` is separate and applies either way: the model does the
 reasoning, Tavily does the looking-up. Swapping the model provider does not change
 how search works.
-
-## The minimal version
-
-`examples/quickstart.py` is the shape everything else builds on:
-
-```python
-from deepagents import create_deep_agent
-
-agent = create_deep_agent(
-    model="google_genai:gemini-3.6-flash",
-    tools=[get_weather],
-    system_prompt="You are a helpful assistant",
-)
-
-agent.invoke({"messages": [{"role": "user", "content": "What is the weather in Pune?"}]})
-```
-
-Even this bare call already has the filesystem and `task` tools. `agent.py` adds the
-planning middleware, the research prompts, and the two subagents.
 
 ## Providers
 

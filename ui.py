@@ -16,7 +16,6 @@ TOOL_LABELS = {
     "ls": "📂 Listing files",
     "glob": "📂 Finding files",
     "grep": "🔍 Searching notes",
-    "get_weather": "🌤️ Checking weather",
 }
 
 STATUS_ICONS = {"pending": "⬜", "in_progress": "🔄", "completed": "✅"}
