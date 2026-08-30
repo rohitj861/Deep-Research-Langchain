@@ -33,7 +33,7 @@ from config import (
     get_model_spec,
 )
 from prompts import critique_subagent_prompt, orchestrator_prompt, research_subagent_prompt
-from tools import build_search_tools
+from tools import build_search_tools, get_weather
 from utils import read_file
 
 NUDGE = (
@@ -116,9 +116,9 @@ def build_research_agent(
 
     return create_deep_agent(
         model=model or resolve_model(provider),
-        # The orchestrator delegates searching to research-agent, so it carries no
-        # tools of its own beyond anything the caller adds.
-        tools=list(extra_tools or []),
+        # The orchestrator delegates searching; it keeps only the demo tool plus
+        # whatever the caller adds.
+        tools=[get_weather, *(extra_tools or [])],
         system_prompt=orchestrator_prompt(preset.subagent_calls),
         subagents=build_subagents(preset.searches_per_task, research_tools),
         middleware=[

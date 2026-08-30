@@ -35,6 +35,7 @@ class AgentAssemblyTests(unittest.TestCase):
         names = _tool_names(build_research_agent("gemini", "Standard"))
         self.assertIn("write_todos", names)   # planning
         self.assertIn("task", names)          # subagent delegation
+        self.assertIn("get_weather", names)   # custom tool
         self.assertTrue(set(FILESYSTEM_TOOLS) <= names)
 
     def test_shell_execution_is_not_exposed(self):
