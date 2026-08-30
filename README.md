@@ -51,11 +51,13 @@ summary. The orchestrator's context stays small no matter how much reading happe
 ## Project structure
 
 ```text
-Deep-Research-AI-Agent/
+Deep-Research-Langchain/
 ├── agent.py              # create_deep_agent(...) — the core of the project
 ├── prompts.py            # orchestrator + subagent system prompts
 ├── config.py             # providers as "provider:model" specs, depth presets
 ├── app.py                # Streamlit UI (streams tools, todos, files, report)
+├── ui.py                 # presentation helpers, importable without running app.py
+├── auth.py               # shared-password gate for the deployed app
 ├── exporter.py           # markdown -> PDF (headings, lists, tables)
 ├── errors.py             # provider errors -> one actionable line
 ├── tools/
