@@ -196,11 +196,17 @@ Set two keys and it turns itself on:
 ```ini
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
-LANGFUSE_HOST=https://cloud.langfuse.com   # or https://us.cloud.langfuse.com
+LANGFUSE_HOST=https://cloud.langfuse.com
 ```
 
 Free tier and keys at [cloud.langfuse.com](https://cloud.langfuse.com) → Settings → API
-Keys. Self-hosted works too — point `LANGFUSE_HOST` at your instance.
+Keys. Self-hosted works too — point the host at your instance.
+
+**Keys are region-scoped.** Langfuse Cloud runs in EU (`cloud.langfuse.com`), US
+(`us.cloud.langfuse.com`) and JP (`jp.cloud.langfuse.com`); keys from one region will not
+authenticate against another, which is the usual cause of "the keys look right but no
+traces appear". `LANGFUSE_BASE_URL` and `LANGFUSE_HOST` both work — the SDK checks
+`LANGFUSE_BASE_URL` first, and so does the sidebar link.
 
 - **Entirely optional.** Without both keys `build_callbacks()` returns an empty list and
   nothing else changes. Tracing never breaks a research run: if the handler fails to

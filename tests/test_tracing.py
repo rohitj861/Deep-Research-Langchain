@@ -61,11 +61,36 @@ class TracingEnabledTests(unittest.TestCase):
                 self.assertTrue(config.ensure_tracing_env())
                 self.assertEqual(os.environ["LANGFUSE_PUBLIC_KEY"], "pk-lf-test")
 
-    def test_host_defaults_when_unset(self):
-        with patch.dict(os.environ, {"LANGFUSE_HOST": ""}, clear=False):
+    def test_host_defaults_only_when_no_region_is_named(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("LANGFUSE_HOST", None)
+            os.environ.pop("LANGFUSE_BASE_URL", None)
+            with patch.object(config, "_streamlit_secrets", lambda: {
+                "LANGFUSE_PUBLIC_KEY": "pk-lf-test", "LANGFUSE_SECRET_KEY": "sk-lf-test"}):
+                config.ensure_tracing_env()
+            self.assertEqual(os.environ["LANGFUSE_HOST"], "https://cloud.langfuse.com")
+
+    def test_an_explicit_region_is_not_overwritten_by_the_default(self):
+        # LANGFUSE_BASE_URL wins in the SDK, so defaulting LANGFUSE_HOST blindly
+        # would point a JP or US project at the EU cloud.
+        with patch.dict(os.environ, {"LANGFUSE_BASE_URL": "https://jp.cloud.langfuse.com"}, clear=False):
             os.environ.pop("LANGFUSE_HOST", None)
             config.ensure_tracing_env()
-            self.assertTrue(os.environ["LANGFUSE_HOST"].startswith("https://"))
+            self.assertNotIn("LANGFUSE_HOST", os.environ)
+
+    def test_base_url_is_published_for_the_sdk(self):
+        secrets = dict(KEYS, LANGFUSE_BASE_URL="https://jp.cloud.langfuse.com")
+        with patch.object(config, "_streamlit_secrets", lambda: secrets):
+            with patch.dict(os.environ, {"LANGFUSE_BASE_URL": ""}, clear=False):
+                config.ensure_tracing_env()
+                self.assertEqual(os.environ["LANGFUSE_BASE_URL"], "https://jp.cloud.langfuse.com")
+
+    def test_trace_url_follows_the_sdk_precedence(self):
+        with patch.dict(os.environ, {
+            "LANGFUSE_BASE_URL": "https://jp.cloud.langfuse.com",
+            "LANGFUSE_HOST": "https://cloud.langfuse.com",
+        }, clear=False):
+            self.assertEqual(tracing.trace_url(), "https://jp.cloud.langfuse.com")
 
     def test_callbacks_are_langchain_handlers(self):
         from langchain_core.callbacks import BaseCallbackHandler

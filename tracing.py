@@ -46,7 +46,12 @@ def flush() -> None:
 
 
 def trace_url() -> str:
-    """Base URL of the configured Langfuse instance, for linking from the UI."""
+    """Base URL of the configured Langfuse instance, for linking from the UI.
+
+    Mirrors the SDK's own precedence — `LANGFUSE_BASE_URL` first — so the sidebar
+    link points at the region the traces actually go to.
+    """
     import os
 
-    return os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com").rstrip("/")
+    host = os.environ.get("LANGFUSE_BASE_URL") or os.environ.get("LANGFUSE_HOST") or "https://cloud.langfuse.com"
+    return host.rstrip("/")

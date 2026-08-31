@@ -159,7 +159,14 @@ def has_api_key(provider: Provider | str) -> bool:
     return bool(get_api_key(provider))
 
 
-LANGFUSE_ENVS = ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_HOST")
+# LANGFUSE_BASE_URL is checked before LANGFUSE_HOST by the SDK, and both are in
+# circulation, so carry either through rather than assuming one.
+LANGFUSE_ENVS = (
+    "LANGFUSE_PUBLIC_KEY",
+    "LANGFUSE_SECRET_KEY",
+    "LANGFUSE_BASE_URL",
+    "LANGFUSE_HOST",
+)
 
 
 def tracing_enabled() -> bool:
@@ -179,7 +186,10 @@ def ensure_tracing_env() -> bool:
         value = _setting(name)
         if value:
             os.environ[name] = value
-    os.environ.setdefault("LANGFUSE_HOST", "https://cloud.langfuse.com")
+    # Only default the host when neither variable names a region. Defaulting
+    # blindly would point a JP or US project at the EU cloud.
+    if not (os.environ.get("LANGFUSE_BASE_URL") or os.environ.get("LANGFUSE_HOST")):
+        os.environ["LANGFUSE_HOST"] = "https://cloud.langfuse.com"
     return True
 
 
