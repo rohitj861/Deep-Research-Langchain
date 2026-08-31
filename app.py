@@ -25,8 +25,10 @@ from config import (
     get_provider_spec,
     has_api_key,
     search_enabled,
+    tracing_enabled,
 )
 from errors import explain
+from tracing import flush as flush_traces, trace_url
 from ui import describe_tool_call, render_history_plan, render_todos
 from exporter import export_to_pdf
 from utils import find_file, list_files, read_file
@@ -151,6 +153,13 @@ with st.sidebar:
     else:
         st.warning("No `TAVILY_API_KEY` — the agent will answer from model knowledge only.", icon="⚠️")
 
+    st.header("Tracing")
+    if tracing_enabled():
+        st.success("Langfuse tracing on", icon="📊")
+        st.caption(f"[Open dashboard]({trace_url()})")
+    else:
+        st.caption("No `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` — tracing off.")
+
     st.divider()
     if st.button("New session", use_container_width=True):
         _reset_session()
@@ -194,6 +203,8 @@ if question:
                 st.info(next_step)
                 st.stop()
             status.update(label="Research complete", state="complete")
+        # Langfuse batches in a background thread; Streamlit ends the run first.
+        flush_traces()
 
         st.session_state.files = state.get("files", {}) or {}
         st.session_state.todos = state.get("todos", []) or []

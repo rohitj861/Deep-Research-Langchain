@@ -159,6 +159,30 @@ def has_api_key(provider: Provider | str) -> bool:
     return bool(get_api_key(provider))
 
 
+LANGFUSE_ENVS = ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_HOST")
+
+
+def tracing_enabled() -> bool:
+    """Langfuse needs both keys; the host defaults to Langfuse Cloud EU."""
+    return bool(_setting("LANGFUSE_PUBLIC_KEY") and _setting("LANGFUSE_SECRET_KEY"))
+
+
+def ensure_tracing_env() -> bool:
+    """Publish Langfuse settings to the env vars its SDK reads.
+
+    Same reason as `ensure_search_env`: on Streamlit Cloud these arrive via
+    `st.secrets`, which Streamlit does not export to the environment.
+    """
+    if not tracing_enabled():
+        return False
+    for name in LANGFUSE_ENVS:
+        value = _setting(name)
+        if value:
+            os.environ[name] = value
+    os.environ.setdefault("LANGFUSE_HOST", "https://cloud.langfuse.com")
+    return True
+
+
 def app_password() -> str:
     """Shared password gating the deployed app. Empty means no gate."""
     return _setting("APP_PASSWORD")

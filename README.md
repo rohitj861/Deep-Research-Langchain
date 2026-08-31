@@ -60,6 +60,7 @@ Deep-Research-Langchain/
 ├── auth.py               # shared-password gate for the deployed app
 ├── exporter.py           # markdown -> PDF (headings, lists, tables)
 ├── errors.py             # provider errors -> one actionable line
+├── tracing.py            # optional Langfuse tracing (inert without keys)
 ├── tools/
 │   ├── search.py         # Tavily web search for the research subagent
 │   └── weather.py        # get_weather — worked example of a custom tool
@@ -88,6 +89,7 @@ streamlit run app.py
 | `OPENAI_API_KEY` | OpenAI — the default provider. Paid only; no free tier. |
 | `GOOGLE_API_KEY` (or `GEMINI_API_KEY`) | Gemini — the alternative provider. Has a free tier. |
 | `TAVILY_API_KEY` | live web search. **Optional but strongly recommended** — without it the agent researches from model knowledge only and says so in its notes. |
+| `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY` | **Optional.** Tracing — see [Tracing](#tracing) below. |
 
 You need a key for **one** model provider, not both — whichever you select in the
 sidebar. `TAVILY_API_KEY` is separate and applies either way: the model does the
@@ -102,7 +104,7 @@ how search works.
 from deepagents import create_deep_agent
 
 agent = create_deep_agent(
-    model="google_genai:gemini-3.6-flash",
+    model="google_genai:gemini-3.1-flash-lite",
     tools=[get_weather],
     system_prompt="You are a helpful assistant",
 )
@@ -181,6 +183,33 @@ the same code runs locally off `.env` and on Cloud off the secrets panel — no 
   Keep `RESEARCH_DEPTH=Basic` on a public deployment.
 - **State is per-session and in memory.** Notes and reports vanish when the app sleeps or
   restarts; nothing is written to durable storage.
+
+## Tracing
+
+A deep agent is hard to debug from the outside: the orchestrator's turns and each
+subagent's isolated run all vanish into one chat reply. With Langfuse configured, every
+model call, tool call, and delegation becomes a nested span in a single trace — token
+counts, latency, and the exact prompt each subagent received.
+
+Set two keys and it turns itself on:
+
+```ini
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_HOST=https://cloud.langfuse.com   # or https://us.cloud.langfuse.com
+```
+
+Free tier and keys at [cloud.langfuse.com](https://cloud.langfuse.com) → Settings → API
+Keys. Self-hosted works too — point `LANGFUSE_HOST` at your instance.
+
+- **Entirely optional.** Without both keys `build_callbacks()` returns an empty list and
+  nothing else changes. Tracing never breaks a research run: if the handler fails to
+  construct, the error is logged and the run continues untraced.
+- **Callbacks propagate into subagents**, so one trace covers the orchestrator and every
+  delegation beneath it rather than producing a trace per subagent.
+- **Traces are flushed explicitly** after each run. Langfuse batches in a background
+  thread, and Streamlit finishes a script run before that thread would flush on its own.
+- The sidebar shows whether tracing is on and links to your dashboard.
 
 ## Research depth
 

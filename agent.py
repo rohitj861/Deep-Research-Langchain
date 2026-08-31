@@ -34,6 +34,7 @@ from config import (
 )
 from prompts import critique_subagent_prompt, orchestrator_prompt, research_subagent_prompt
 from tools import build_search_tools, get_weather
+from tracing import build_callbacks
 from utils import find_file
 
 NUDGE = (
@@ -145,8 +146,16 @@ def ensure_report(agent: CompiledStateGraph, config: dict, state: dict) -> dict:
 
 
 def run_config(depth: str = DEFAULT_DEPTH, thread_id: str = "default") -> dict:
-    """LangGraph config: step budget for the depth, plus the conversation thread."""
-    return {
+    """LangGraph config: step budget, conversation thread, and tracing callbacks.
+
+    Callbacks propagate into subagent runs, so one trace covers the orchestrator
+    and every delegation beneath it.
+    """
+    config = {
         "configurable": {"thread_id": thread_id},
         "recursion_limit": get_depth_preset(depth).recursion_limit,
     }
+    callbacks = build_callbacks()
+    if callbacks:
+        config["callbacks"] = callbacks
+    return config

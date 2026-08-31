@@ -11,6 +11,9 @@ langchain-openai>=1.4.0
 langchain-tavily>=0.2.18
 requests>=2.31.0
 
+# Tracing (optional — inert without Langfuse keys)
+langfuse>=4.15.1
+
 # App + export
 streamlit>=1.37.0
 python-dotenv>=1.0.0
