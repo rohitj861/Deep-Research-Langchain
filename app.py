@@ -1,5 +1,6 @@
 """Streamlit front end for the Deep Research deep agent."""
 
+import contextlib
 import os
 import pathlib
 import tempfile
@@ -102,10 +103,20 @@ def _stream_run(agent, question: str, depth: str, activity, plan_box) -> dict:
 
 @st.cache_data(show_spinner=False)
 def _report_pdf(report: str) -> bytes:
-    """Render the report to PDF once and cache it, keyed on the report text."""
-    path = os.path.join(tempfile.gettempdir(), "research_report.pdf")
-    export_to_pdf(report, path)
-    return pathlib.Path(path).read_bytes()
+    """Render the report to PDF once and cache it, keyed on the report text.
+
+    Writes to a private temp file: Streamlit Cloud serves every viewer from one
+    process, so a fixed path would let two people rendering different reports
+    overwrite each other and download the wrong document.
+    """
+    handle, path = tempfile.mkstemp(prefix="research_report_", suffix=".pdf")
+    os.close(handle)
+    try:
+        export_to_pdf(report, path)
+        return pathlib.Path(path).read_bytes()
+    finally:
+        with contextlib.suppress(OSError):
+            os.unlink(path)
 
 
 def _final_text(state: dict) -> str:

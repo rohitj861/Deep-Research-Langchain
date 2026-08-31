@@ -22,8 +22,8 @@ def explain(exc: BaseException) -> tuple[str, str]:
         if limit:
             headline = f"Provider quota exceeded (limit: {limit.group(1)} requests)."
         step = (
-            "A research run makes many model calls. Either switch `GEMINI_MODEL` in `.env` "
-            "to a model with a larger free allowance, pick a different provider in the "
+            "A research run makes many model calls. Either switch the provider's `*_MODEL` "
+            "setting to a model with a larger allowance, pick a different provider in the "
             "sidebar, lower `REQUESTS_PER_MINUTE`, or enable billing on your provider account."
         )
         if retry:

@@ -5,6 +5,7 @@ Every provider is expressed as a LangChain model spec string
 ``create_deep_agent(model=...)``, which resolves it via ``init_chat_model``.
 """
 
+import logging
 import os
 from dataclasses import dataclass
 from enum import Enum
@@ -13,6 +14,8 @@ from functools import lru_cache
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=1)
@@ -80,7 +83,26 @@ PROVIDER_SPECS: dict[Provider, ProviderSpec] = {
 
 PROVIDER_LABELS = {provider: spec.label for provider, spec in PROVIDER_SPECS.items()}
 
-DEFAULT_PROVIDER = Provider(_setting("DEFAULT_PROVIDER", Provider.OPENAI.value).lower())
+def _default_provider() -> Provider:
+    """Resolve DEFAULT_PROVIDER, falling back rather than killing the app.
+
+    A stale or misspelled value (a provider that has since been removed, say) used
+    to raise ValueError at import, so the whole app died with a stack trace over
+    one setting.
+    """
+    name = _setting("DEFAULT_PROVIDER", Provider.OPENAI.value).lower()
+    try:
+        return Provider(name)
+    except ValueError:
+        valid = ", ".join(p.value for p in Provider)
+        logger.warning(
+            "DEFAULT_PROVIDER=%r is not one of (%s); falling back to %s.",
+            name, valid, Provider.OPENAI.value,
+        )
+        return Provider.OPENAI
+
+
+DEFAULT_PROVIDER = _default_provider()
 
 
 @dataclass(frozen=True)

@@ -10,6 +10,7 @@ is now expressed as one `create_deep_agent` call:
   agent's virtual filesystem, then revising it after `critique-agent` reviews it.
 """
 
+from functools import lru_cache
 from typing import Any
 
 from deepagents import FilesystemMiddleware, SubAgent, create_deep_agent
@@ -48,6 +49,21 @@ NUDGE = (
 FILESYSTEM_TOOLS = ["ls", "read_file", "write_file", "edit_file", "glob", "grep"]
 
 
+@lru_cache(maxsize=1)
+def _rate_limiter() -> InMemoryRateLimiter:
+    """One limiter for the whole process.
+
+    Provider quotas are per account, not per session. A limiter built per agent
+    would let N concurrent Streamlit sessions each issue REQUESTS_PER_MINUTE,
+    which is exactly the burst the pacing exists to prevent.
+    """
+    return InMemoryRateLimiter(
+        requests_per_second=max(REQUESTS_PER_MINUTE, 1) / 60,
+        check_every_n_seconds=0.5,
+        max_bucket_size=2,
+    )
+
+
 def resolve_model(provider: Provider | str) -> BaseChatModel:
     """Build the chat model for a provider, paced so free tiers survive a full run.
 
@@ -56,12 +72,7 @@ def resolve_model(provider: Provider | str) -> BaseChatModel:
     so far, so the client is rate limited and retries transient failures.
     """
     ensure_provider_env(provider)
-    rate_limiter = InMemoryRateLimiter(
-        requests_per_second=max(REQUESTS_PER_MINUTE, 1) / 60,
-        check_every_n_seconds=0.5,
-        max_bucket_size=2,
-    )
-    return init_chat_model(get_model_spec(provider), rate_limiter=rate_limiter, max_retries=MAX_RETRIES)
+    return init_chat_model(get_model_spec(provider), rate_limiter=_rate_limiter(), max_retries=MAX_RETRIES)
 
 
 def build_subagents(searches_per_task: int, research_tools: list[BaseTool]) -> list[SubAgent]:
