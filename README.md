@@ -242,9 +242,11 @@ Writes `research_report.md` and `research_report.pdf`.
 python -m unittest discover -s tests -t .
 ```
 
-The suite covers provider/model resolution, agent assembly (which tools end up bound,
-which are deliberately withheld), the virtual-filesystem helpers, tool degradation
-without a Tavily key, and the markdown-to-PDF renderer. Nothing in it hits a network.
+The suite covers provider and model resolution, settings coming from either `.env` or
+Streamlit secrets, agent assembly (which tools end up bound and which are deliberately
+withheld), a full graph run against a scripted model, the virtual-filesystem helpers,
+the password gate, tracing wiring, activity-log rendering, the markdown-to-PDF renderer,
+and the concurrency invariants below. Nothing in it hits a network or a model provider.
 
 ## Notes on design
 
@@ -265,5 +267,14 @@ without a Tavily key, and the markdown-to-PDF renderer. Nothing in it hits a net
   wastes a turn rewriting a report that already exists.
 - **Threads are checkpointed in memory**, so follow-up questions in the same Streamlit
   session keep the notes and report from the previous turn. "New session" clears them.
+- **One process serves every viewer on Streamlit Cloud**, which makes two things
+  invariants rather than preferences. Each PDF render writes to its own temp file: a
+  fixed path let two people downloading different reports overwrite each other and
+  receive the wrong document. And the rate limiter is shared process-wide, because
+  provider quotas are per account — a limiter per session would let N viewers each
+  issue `REQUESTS_PER_MINUTE`, which is the burst the pacing exists to prevent.
+- **A bad setting degrades rather than crashes.** An unknown `DEFAULT_PROVIDER` warns
+  and falls back instead of raising during import, where it would take the whole app
+  down over one line of `.env`.
 - **Provider errors are translated** (`errors.py`) into a headline plus a next step, so a
   quota or bad-key failure shows one actionable line instead of a page of API JSON.
